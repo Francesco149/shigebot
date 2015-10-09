@@ -24,7 +24,7 @@ Features
 Usage
 ================================================================================
 * Download the binaries from the 
-  (releases section)[https://github.com/Francesco149/shigebot/releases/].
+  [releases section](https://github.com/Francesco149/shigebot/releases/).
 * Obtain a twitch oauth token from [here](https://twitchapps.com/tmi/).
 * Obtain a gist oauth toekn by using the provided gist-token utility.
 * Enter the two oauth tokens in config.json and customize the other settings 
