@@ -1,0 +1,9 @@
+{
+	"GistOAuth": "run gist-token and paste your token here", 
+	"TwitchUser": "the twitch username that the bot will operate", 
+	"TwitchOAuth": "your twitch oauth token", 
+	"Ignore": [ ], 
+	"Channels": [ "#twitchchannel1", "#twitchchannel2" ], 
+	"IsMod": true, 
+	"CaseSensitive": false
+}
