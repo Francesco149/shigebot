@@ -171,7 +171,7 @@ func Init(twitchUser, twitchOauth, gistOAuth string, channelList []string,
 		split := strings.Fields(cmd) // split at whitespace
 		cmd = split[0]
 		args := split[1:]
-		
+
 		if !b.caseSensitive {
 			cmd = strings.ToLower(cmd)
 		}

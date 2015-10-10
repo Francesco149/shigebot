@@ -42,7 +42,7 @@ func (db dbManager) convertDB()  {
 	}
 
 	olddb := dbManager{conn}
-	
+
 	sqlStmt, err := olddb.Prepare(
 		"select channel, name, reply, mod_only from commands")
 	if err != nil {
@@ -63,10 +63,10 @@ func (db dbManager) convertDB()  {
 		}
 		db.setCommand(channel, name, reply, modOnly)
 	}
-	
+
 	rows.Close()
 	sqlStmt.Close()
-	
+
 	sqlStmt, err = olddb.Prepare(
 		"select channel, url from gists")
 	if err != nil {
@@ -86,7 +86,7 @@ func (db dbManager) convertDB()  {
 		}
 		db.setGist(channel, url)
 	}
-	
+
 	rows.Close()
 	sqlStmt.Close()
 }
@@ -123,13 +123,13 @@ func newDBManager() (db dbManager, err error) {
 	);
 	create unique index commands_index on commands(channel, name);
 	create unique index gists_index on gists(channel);`
-	
+
 	tx, err := db.Begin()
 	if err != nil {
 		panic(err)
 	}
 	defer tx.Commit()
-	
+
 	_, err = tx.Exec(sqlStmt)
 	return
 }
