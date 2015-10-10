@@ -22,7 +22,7 @@ import (
 	"strings"
 )
 
-const BotName = "Shigebot 1.0.0"
+const BotName = "Shigebot 1.1.0"
 
 // A TextCommand is a simple text command in a irc channel.
 type TextCommand struct {
@@ -147,9 +147,6 @@ func Init(twitchUser, twitchOauth, gistOAuth string, channelList []string,
 		}
 
 		msg := event.Message()
-		if !b.caseSensitive {
-			msg = strings.ToLower(msg)
-		}
 
 		channelName := event.Arguments[0]
 		nick := event.Nick
@@ -174,6 +171,10 @@ func Init(twitchUser, twitchOauth, gistOAuth string, channelList []string,
 		split := strings.Fields(cmd) // split at whitespace
 		cmd = split[0]
 		args := split[1:]
+		
+		if !b.caseSensitive {
+			cmd = strings.ToLower(cmd)
+		}
 
 		if len(cmd) == 0 {
 			c.Println("Ignored empty command")

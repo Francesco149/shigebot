@@ -121,7 +121,7 @@ func (c Channel) FullCommandList(separator, modPrefix string,
 			line = fmt.Sprintf("!%s: %s%s", name, command.Text, separator)
 		}
 		if command.ModOnly {
-			line = fmt.Sprintf("%s%s", modPrefix, command)
+			line = fmt.Sprintf("%s%s", modPrefix, line)
 		}
 		res += line
 	}

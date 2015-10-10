@@ -36,7 +36,7 @@ How to compile
 * [Install go](https://golang.org/doc/install)
 ```
 go get github.com/thoj/go-ircevent
-go get github.com/mattn/go-sqlite3
+go get -tags purego github.com/cznic/ql
 go get github.com/MaximeD/gost
 go get github.com/Francesco149/shigebot
 go install github.com/Francesco149/shigebot/...

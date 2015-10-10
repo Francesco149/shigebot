@@ -18,24 +18,85 @@ package shige
 import (
 	"database/sql"
 	"fmt"
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/cznic/ql/driver"
+	//_ "github.com/mattn/go-sqlite3"
 	"os"
 )
 
-const commandsFile = "shige.db"
+const commandsFile = "shige_ql.db"
 
 type dbManager struct{ *sql.DB }
 
 func (b *Bot) initDB() (err error) {
 	b.db, err = newDBManager()
+	//b.db.convertDB()
 	return
 }
+
+/*
+func (db dbManager) convertDB()  {
+	fmt.Println("CONVERTINGU CONVERTINGU")
+	conn, err := sql.Open("sqlite3", "shige.db")
+	if err != nil {
+		return
+	}
+
+	olddb := dbManager{conn}
+	
+	sqlStmt, err := olddb.Prepare(
+		"select channel, name, reply, mod_only from commands")
+	if err != nil {
+		panic(err)
+	}
+
+	rows, err := sqlStmt.Query()
+	if err != nil {
+		panic(err)
+	}
+
+	for rows.Next() {
+		var channel, name, reply string
+		var modOnly bool
+		err = rows.Scan(&channel, &name, &reply, &modOnly)
+		if err != nil {
+			panic(err)
+		}
+		db.setCommand(channel, name, reply, modOnly)
+	}
+	
+	rows.Close()
+	sqlStmt.Close()
+	
+	sqlStmt, err = olddb.Prepare(
+		"select channel, url from gists")
+	if err != nil {
+		panic(err)
+	}
+
+	rows, err = sqlStmt.Query()
+	if err != nil {
+		panic(err)
+	}
+
+	for rows.Next() {
+		var channel, url string
+		err = rows.Scan(&channel, &url)
+		if err != nil {
+			panic(err)
+		}
+		db.setGist(channel, url)
+	}
+	
+	rows.Close()
+	sqlStmt.Close()
+}
+*/
 
 func newDBManager() (db dbManager, err error) {
 	_, err = os.Stat(commandsFile)
 	createTables := os.IsNotExist(err)
 
-	conn, err := sql.Open("sqlite3", commandsFile)
+	conn, err := sql.Open("ql", commandsFile)
 	if err != nil {
 		return
 	}
@@ -51,25 +112,31 @@ func newDBManager() (db dbManager, err error) {
 	fmt.Println("DB: Initializing tables")
 	sqlStmt := `
 	create table commands (
-		channel char(512) not null, 
-		name char(512) not null, 
-		reply text not null, 
-		mod_only int not null, 
-		primary key (channel, name)
+		channel string not null, 
+		name string not null, 
+		reply string not null, 
+		mod_only bool not null
 	);
 	create table gists (
-		channel char(512) not null, 
-		url text not null, 
-		primary key (channel)
+		channel string not null, 
+		url string not null
 	);
-	`
-	_, err = db.Exec(sqlStmt)
+	create unique index commands_index on commands(channel, name);
+	create unique index gists_index on gists(channel);`
+	
+	tx, err := db.Begin()
+	if err != nil {
+		panic(err)
+	}
+	defer tx.Commit()
+	
+	_, err = tx.Exec(sqlStmt)
 	return
 }
 
 func (db dbManager) getGist(channel string) (gistUrl string) {
 	fmt.Println("DB: Getting gist for", channel)
-	sqlStmt, err := db.Prepare("select url from gists where channel=?")
+	sqlStmt, err := db.Prepare("select url from gists where channel==$1;")
 	if err != nil {
 		panic(err)
 	}
@@ -89,7 +156,6 @@ func (db dbManager) getGist(channel string) (gistUrl string) {
 	err = rows.Scan(&gistUrl)
 	if err != nil {
 		panic(err)
-		return
 	}
 
 	return
@@ -110,7 +176,7 @@ func (db dbManager) setGist(channel, gistUrl string) error {
 
 	if justUpdate {
 		fmt.Println("DB: Updating gist for", channel)
-		sqlStmt, err := tx.Prepare("update gists set url=? where channel=?")
+		sqlStmt, err := tx.Prepare("update gists set url=$1 where channel==$2;")
 		if err != nil {
 			panic(err)
 		}
@@ -124,7 +190,8 @@ func (db dbManager) setGist(channel, gistUrl string) error {
 	}
 
 	fmt.Println("DB: Adding gist for", channel)
-	sqlStmt, err := tx.Prepare("insert into gists(channel, url) values(?, ?);")
+	sqlStmt, err := tx.Prepare(
+		"insert into gists(channel, url) values($1, $2);")
 	if err != nil {
 		panic(err)
 	}
@@ -143,7 +210,7 @@ func (db dbManager) getCommand(channel, command string) (
 
 	fmt.Println("DB: Getting command", command, "in", channel)
 	sqlStmt, err := db.Prepare(
-		"select reply, mod_only from commands where channel=? and name=?")
+		"select reply, mod_only from commands where channel==$1 and name==$2;")
 	if err != nil {
 		panic(err)
 	}
@@ -160,12 +227,10 @@ func (db dbManager) getCommand(channel, command string) (
 		return
 	}
 
-	var tmpModOnly int
-	err = rows.Scan(&text, &tmpModOnly)
+	err = rows.Scan(&text, &modOnly)
 	if err != nil {
 		panic(err)
 	}
-	modOnly = tmpModOnly == 1
 
 	return
 }
@@ -175,7 +240,7 @@ func (db dbManager) getCommands(channel string) (res map[string]*TextCommand) {
 	res = make(map[string]*TextCommand)
 
 	sqlStmt, err := db.Prepare(
-		"select name, reply, mod_only from commands where channel=?")
+		"select name, reply, mod_only from commands where channel==$1;")
 	if err != nil {
 		panic(err)
 	}
@@ -191,12 +256,10 @@ func (db dbManager) getCommands(channel string) (res map[string]*TextCommand) {
 	for rows.Next() {
 		c := &TextCommand{}
 		var name string
-		var tmpModOnly int
-		err = rows.Scan(&name, &c.Text, &tmpModOnly)
+		err = rows.Scan(&name, &c.Text, &c.ModOnly)
 		if err != nil {
 			panic(err)
 		}
-		c.ModOnly = tmpModOnly == 1
 		res[name] = c
 		fmt.Println(res[name])
 	}
@@ -222,8 +285,8 @@ func (db dbManager) setCommand(channel, command,
 
 	if justUpdate {
 		fmt.Println("DB: Updating command", command, "for", channel)
-		sqlStmt, err := tx.Prepare("update commands set reply=?, mod_only=? " +
-			"where channel=? and name=?")
+		sqlStmt, err := tx.Prepare("update commands set reply=$1, mod_only=$2" +
+			" where channel==$3 and name==$4;")
 		if err != nil {
 			panic(err)
 		}
@@ -239,7 +302,7 @@ func (db dbManager) setCommand(channel, command,
 	fmt.Println("DB: Adding command", command, "for", channel)
 	sqlStmt, err := tx.Prepare(
 		"insert into commands(channel, name, reply, mod_only) " +
-			"values(?, ?, ?, ?);")
+			"values($1, $2, $3, $4);")
 	if err != nil {
 		panic(err)
 	}
@@ -267,7 +330,7 @@ func (db dbManager) removeCommand(channel, command string) error {
 	defer tx.Commit()
 
 	sqlStmt, err := tx.Prepare(
-		"delete from commands where channel=? and name=?")
+		"delete from commands where channel==$1 and name==$2;")
 	if err != nil {
 		panic(err)
 	}
