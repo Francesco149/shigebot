@@ -23,7 +23,7 @@ import (
 	"time"
 )
 
-const BotName = "Shigebot 1.1.2"
+const BotName = "Shigebot 1.1.3"
 
 // A TextCommand is a simple text command in a irc channel.
 type TextCommand struct {
@@ -31,6 +31,8 @@ type TextCommand struct {
 	Text string
 	// ModOnly is true when the command is reserved for mods.
 	ModOnly bool
+	// LastUsage is the time the command was last used
+	LastUsage time.Time
 }
 
 // A Bot is an instance of Shigebot connected to multiple channels on twitch
@@ -54,10 +56,11 @@ type Bot struct {
 	gistOAuth     string
 
 	// the following fieldsare thread safe by using channels as mutexes
-	chChannels  chan map[string]*Channel
-	chCommands  chan map[string]func(*CommandData)
-	rateLimiter chan *rateLimiter
-	ignore      chan map[string]bool
+	chChannels      chan map[string]*Channel
+	chCommands      chan map[string]func(*CommandData)
+	rateLimiter     chan *rateLimiter
+	ignore          chan map[string]bool
+	commandCooldown int64
 }
 
 // Irc returns a pointer to the irc connection object used by the bot.
@@ -105,9 +108,10 @@ func Init(twitchUser, twitchOauth, gistOAuth string, channelList []string,
 
 	fmt.Printf("> %s\n", BotName)
 	b = &Bot{
-		isMod:         isMod,
-		caseSensitive: caseSensitive,
-		gistOAuth:     gistOAuth,
+		isMod:           isMod,
+		caseSensitive:   caseSensitive,
+		gistOAuth:       gistOAuth,
+		commandCooldown: 0,
 	}
 
 	// initialize everything
@@ -142,7 +146,7 @@ func Init(twitchUser, twitchOauth, gistOAuth string, channelList []string,
 			b.Join(channel)
 		}
 	})
-	
+
 	ircobj.AddCallback("PING", func(event *irc.Event) {
 		fmt.Println("PING", event.Arguments[0])
 		pongraw := fmt.Sprintf("PONG %s", event.Arguments[0])
@@ -167,7 +171,7 @@ func Init(twitchUser, twitchOauth, gistOAuth string, channelList []string,
 		c.Printf("%s: %s\n", nick, msg)
 
 		// ignore empty messages
-		if len(msg) == 0 {
+		if len(msg) == 0 || len(msg) == 1 {
 			return
 		}
 

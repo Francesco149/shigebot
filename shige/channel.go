@@ -19,6 +19,8 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"sync/atomic"
+	"time"
 )
 
 // A Channel is a single irc channel to which the bot is connected.
@@ -45,6 +47,10 @@ func newChannel(parent *Bot, name string) *Channel {
 	// load commands for this channel
 	commands := parent.db.getCommands(name)
 	c.chCommands <- commands
+	if !c.CommandExists("help") {
+		c.AddCommand("help", fmt.Sprintf("Command list: %s",
+			parent.db.getGist(c.name)))
+	}
 
 	// refresh gist
 	parent.updateCommandList(c)
@@ -162,7 +168,7 @@ func (c Channel) AddCommand(name, text string) error {
 		return err
 	}
 
-	commands[name] = &TextCommand{text, false}
+	commands[name] = &TextCommand{Text: text, ModOnly: false}
 	c.Println("Added command", name, "->", text)
 	return nil
 }
@@ -242,12 +248,23 @@ func (c Channel) onCommand(commandName, nick string) bool {
 	defer func() { c.chCommands <- commands }()
 	command := commands[commandName]
 
+	cd := atomic.LoadInt64(&c.parent.commandCooldown)
+	elapsed := time.Now().Sub(command.LastUsage)
+	cooldown := time.Millisecond * time.Duration(cd)
+	if elapsed < cooldown {
+		c.Println("Rejected command", commandName,
+			"because it is still on cooldown,", elapsed,
+			"since last usage, cooldown is", cooldown)
+		return true
+	}
+
 	if command.ModOnly && !c.IsMod(nick) {
 		c.Println("Rejected command", commandName,
 			"because the user is not a mod")
 		return true
 	}
 
+	command.LastUsage = time.Now()
 	c.Println("Processing text command", commandName)
 	c.Privmsgf("%s", command.Text)
 	return true

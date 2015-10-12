@@ -17,7 +17,9 @@ package shige
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
+	"sync/atomic"
 )
 
 // I'm aware all of these could be methods for Channel but I prefer keeping the
@@ -170,13 +172,37 @@ func (b *Bot) initCommands() {
 			b.updateCommandList(c.Channel)
 		},
 
-		"help": func(c *CommandData) {
+		"cooldown": func(c *CommandData) {
+			usage := "Usage: !cooldown milliseconds"
 			ch := c.Channel
-			//commands := "Available commands (+ = mod only): " +
-			//	"+!cmdadd, +!cmdremove, +!cmdedit, +!modonly, !help, "
-			//commands += ch.CommandList()
-			ch.Privmsgf("Command list: %s", b.db.getGist(ch.name))
+			if !ch.IsMod(c.Nick) {
+				return
+			}
+			if len(c.Args) != 1 {
+				ch.Privmsgf(usage)
+				return
+			}
+
+			i, err := strconv.ParseInt(c.Args[0], 10, 64)
+			if err != nil {
+				ch.Privmsgf(usage)
+				return
+			}
+
+			if i < 0 {
+				i = 0
+			}
+
+			ch.Privmsgf("Setting command cooldown to %v milliseconds", i)
+			atomic.StoreInt64(&b.commandCooldown, i)
 		},
+
+		/*
+			"help": func(c *CommandData) {
+				ch := c.Channel
+				ch.Privmsgf("Command list: %s", b.db.getGist(ch.name))
+			},
+		*/
 	}
 
 	b.chCommands = make(chan map[string]func(*CommandData), 1)
@@ -185,9 +211,10 @@ func (b *Bot) initCommands() {
 	b.BuiltinCommandsInfo = "" +
 		`* +!cmdadd: adds a command (Usage: !cmdadd commandname text)
 * +!cmdremove: removes a command (Usage: !cmdremove commandname)
-* +!cmdedit: changes the text for a command (Usage: !cmdedit commandname newtext)
+* +!cmdedit: changes the text for a command (Usage: !cmdedit commandname text)
 * +!modonly: limits a command to mods only (Usage: !modonly commandname yes/no)
-* !help: provides a link to this page`
+* +!cooldown: milliseconds before a command can be reused (Usage: !cooldown ms)`
+		//* !help: provides a link to this page`
 
 	fmt.Println("> Built-in commands initialized")
 }
