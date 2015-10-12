@@ -178,7 +178,7 @@ func (b *Bot) initCommands() {
 				return
 			}
 
-			cd := atomic.LoadInt64(&b.commandCooldown)
+			cd := atomic.LoadInt64(&ch.commandCooldown)
 			usage := fmt.Sprintf(
 				"Usage: !cooldown milliseconds. Current cooldown is %vms.", cd)
 
@@ -198,7 +198,7 @@ func (b *Bot) initCommands() {
 			}
 
 			ch.Privmsgf("Setting command cooldown to %v milliseconds", i)
-			atomic.StoreInt64(&b.commandCooldown, i)
+			atomic.StoreInt64(&ch.commandCooldown, i)
 		},
 	}
 

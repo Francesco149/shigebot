@@ -56,11 +56,10 @@ type Bot struct {
 	gistOAuth     string
 
 	// the following fieldsare thread safe by using channels as mutexes
-	chChannels      chan map[string]*Channel
-	chCommands      chan map[string]func(*CommandData)
-	rateLimiter     chan *rateLimiter
-	ignore          chan map[string]bool
-	commandCooldown int64
+	chChannels  chan map[string]*Channel
+	chCommands  chan map[string]func(*CommandData)
+	rateLimiter chan *rateLimiter
+	ignore      chan map[string]bool
 }
 
 // Irc returns a pointer to the irc connection object used by the bot.
@@ -108,10 +107,9 @@ func Init(twitchUser, twitchOauth, gistOAuth string, channelList []string,
 
 	fmt.Printf("> %s\n", BotName)
 	b = &Bot{
-		isMod:           isMod,
-		caseSensitive:   caseSensitive,
-		gistOAuth:       gistOAuth,
-		commandCooldown: 0,
+		isMod:         isMod,
+		caseSensitive: caseSensitive,
+		gistOAuth:     gistOAuth,
 	}
 
 	// initialize everything

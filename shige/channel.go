@@ -25,10 +25,11 @@ import (
 
 // A Channel is a single irc channel to which the bot is connected.
 type Channel struct {
-	name       string
-	chMods     chan map[string]bool
-	chCommands chan map[string]*TextCommand
-	parent     *Bot
+	name            string
+	chMods          chan map[string]bool
+	chCommands      chan map[string]*TextCommand
+	parent          *Bot
+	commandCooldown int64
 }
 
 // I don't really need a map for mods but looking up names is less code.
@@ -41,6 +42,7 @@ func newChannel(parent *Bot, name string) *Channel {
 		make(chan map[string]bool, 1),
 		make(chan map[string]*TextCommand, 1),
 		parent,
+		0,
 	}
 	c.chMods <- make(map[string]bool)
 
@@ -265,7 +267,7 @@ func (c Channel) onCommand(commandName, nick string) bool {
 	defer func() { c.chCommands <- commands }()
 	command := commands[commandName]
 
-	cd := atomic.LoadInt64(&c.parent.commandCooldown)
+	cd := atomic.LoadInt64(&c.commandCooldown)
 	elapsed := time.Now().Sub(command.LastUsage)
 	cooldown := time.Millisecond * time.Duration(cd)
 	if elapsed < cooldown {
