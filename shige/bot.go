@@ -23,7 +23,7 @@ import (
 	"time"
 )
 
-const BotName = "Shigebot 1.1.3"
+const BotName = "Shigebot 1.1.4"
 
 // A TextCommand is a simple text command in a irc channel.
 type TextCommand struct {

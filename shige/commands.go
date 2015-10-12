@@ -173,7 +173,9 @@ func (b *Bot) initCommands() {
 		},
 
 		"cooldown": func(c *CommandData) {
-			usage := "Usage: !cooldown milliseconds"
+			cd := atomic.LoadInt64(&b.commandCooldown)
+			usage := fmt.Sprintf(
+				"Usage: !cooldown milliseconds. Current cooldown is %vms.", cd)
 			ch := c.Channel
 			if !ch.IsMod(c.Nick) {
 				return

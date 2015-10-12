@@ -47,13 +47,30 @@ func newChannel(parent *Bot, name string) *Channel {
 	// load commands for this channel
 	commands := parent.db.getCommands(name)
 	c.chCommands <- commands
-	if !c.CommandExists("help") {
+
+	addhelp := func() {
+		if c.CommandExists("help") {
+			return
+		}
 		c.AddCommand("help", fmt.Sprintf("Command list: %s",
 			parent.db.getGist(c.name)))
 	}
 
+	// if the gist is already initialized, add help now and update the gist
+	gistInitialized := parent.db.getGist(c.name) != ""
+
+	if gistInitialized {
+		addhelp()
+	}
+
 	// refresh gist
 	parent.updateCommandList(c)
+
+	// if the gist wasn't initialized earlier, add help now and update the gist
+	if !gistInitialized {
+		addhelp()
+		parent.updateCommandList(c)
+	}
 
 	return c
 }
