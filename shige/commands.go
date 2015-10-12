@@ -178,7 +178,7 @@ func (b *Bot) initCommands() {
 				return
 			}
 
-			cd := atomic.LoadInt64(&ch.commandCooldown)
+			cd := atomic.LoadInt32(&ch.commandCooldown)
 			usage := fmt.Sprintf(
 				"Usage: !cooldown milliseconds. Current cooldown is %vms.", cd)
 
@@ -187,7 +187,7 @@ func (b *Bot) initCommands() {
 				return
 			}
 
-			i, err := strconv.ParseInt(c.Args[0], 10, 64)
+			i, err := strconv.ParseInt(c.Args[0], 10, 32)
 			if err != nil {
 				ch.Privmsgf(usage)
 				return
@@ -198,7 +198,7 @@ func (b *Bot) initCommands() {
 			}
 
 			ch.Privmsgf("Setting command cooldown to %v milliseconds", i)
-			atomic.StoreInt64(&ch.commandCooldown, i)
+			atomic.StoreInt32(&ch.commandCooldown, int32(i))
 		},
 	}
 

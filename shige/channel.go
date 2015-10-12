@@ -25,7 +25,7 @@ import (
 
 // A Channel is a single irc channel to which the bot is connected.
 type Channel struct {
-	commandCooldown int64
+	commandCooldown int32
 	name            string
 	chMods          chan map[string]bool
 	chCommands      chan map[string]*TextCommand
@@ -267,7 +267,7 @@ func (c Channel) onCommand(commandName, nick string) bool {
 	defer func() { c.chCommands <- commands }()
 	command := commands[commandName]
 
-	cd := atomic.LoadInt64(&c.commandCooldown)
+	cd := atomic.LoadInt32(&c.commandCooldown)
 	elapsed := time.Now().Sub(command.LastUsage)
 	cooldown := time.Millisecond * time.Duration(cd)
 	if elapsed < cooldown {
