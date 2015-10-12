@@ -45,9 +45,14 @@ go install github.com/Francesco149/shigebot/...
 
 Known issues
 ================================================================================
-Recognizing the mods might take a while after the bot first joins a channel, 
-so mod-only commands will only start working a few minutes after the bot joins. 
-This is because twitch takes some time to send the operator modeset messages.
+* If the bot randomly disconnects after some time with an EOF error, configure 
+  it to join its own channel (for example, if your bot is called mybot, you 
+  should add #mybot to the channels in config.json). I have no idea why this 
+  fixes it or why the random disconnects happen on some accounts, but I will 
+  look into it.
+* Recognizing the mods might take a while after the bot first joins a channel, 
+  so mod-only commands will only start working a few minutes after the bot joins. 
+  This is because twitch takes some time to send the operator modeset messages.
 
 Using the shige package to make your own twitch bot
 ================================================================================
