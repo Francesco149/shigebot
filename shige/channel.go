@@ -25,11 +25,11 @@ import (
 
 // A Channel is a single irc channel to which the bot is connected.
 type Channel struct {
+	commandCooldown int64
 	name            string
 	chMods          chan map[string]bool
 	chCommands      chan map[string]*TextCommand
 	parent          *Bot
-	commandCooldown int64
 }
 
 // I don't really need a map for mods but looking up names is less code.
@@ -38,11 +38,11 @@ type Channel struct {
 
 func newChannel(parent *Bot, name string) *Channel {
 	c := &Channel{
+		0,
 		name,
 		make(chan map[string]bool, 1),
 		make(chan map[string]*TextCommand, 1),
 		parent,
-		0,
 	}
 	c.chMods <- make(map[string]bool)
 
