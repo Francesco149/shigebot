@@ -171,7 +171,7 @@ func Init(twitchUser, twitchOauth, gistOAuth string, channelList []string,
 		c.Printf("%s: %s\n", nick, msg)
 
 		// ignore empty messages
-		if len(msg) == 0 || len(msg) == 1 {
+		if len(msg) <= 1 {
 			return
 		}
 

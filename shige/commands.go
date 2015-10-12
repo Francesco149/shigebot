@@ -173,13 +173,15 @@ func (b *Bot) initCommands() {
 		},
 
 		"cooldown": func(c *CommandData) {
-			cd := atomic.LoadInt64(&b.commandCooldown)
-			usage := fmt.Sprintf(
-				"Usage: !cooldown milliseconds. Current cooldown is %vms.", cd)
 			ch := c.Channel
 			if !ch.IsMod(c.Nick) {
 				return
 			}
+
+			cd := atomic.LoadInt64(&b.commandCooldown)
+			usage := fmt.Sprintf(
+				"Usage: !cooldown milliseconds. Current cooldown is %vms.", cd)
+
 			if len(c.Args) != 1 {
 				ch.Privmsgf(usage)
 				return
@@ -198,13 +200,6 @@ func (b *Bot) initCommands() {
 			ch.Privmsgf("Setting command cooldown to %v milliseconds", i)
 			atomic.StoreInt64(&b.commandCooldown, i)
 		},
-
-		/*
-			"help": func(c *CommandData) {
-				ch := c.Channel
-				ch.Privmsgf("Command list: %s", b.db.getGist(ch.name))
-			},
-		*/
 	}
 
 	b.chCommands = make(chan map[string]func(*CommandData), 1)
@@ -216,7 +211,6 @@ func (b *Bot) initCommands() {
 * +!cmdedit: changes the text for a command (Usage: !cmdedit commandname text)
 * +!modonly: limits a command to mods only (Usage: !modonly commandname yes/no)
 * +!cooldown: milliseconds before a command can be reused (Usage: !cooldown ms)`
-		//* !help: provides a link to this page`
 
 	fmt.Println("> Built-in commands initialized")
 }
