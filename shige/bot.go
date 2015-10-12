@@ -20,9 +20,10 @@ import (
 	"fmt"
 	"github.com/thoj/go-ircevent"
 	"strings"
+	"time"
 )
 
-const BotName = "Shigebot 1.1.1"
+const BotName = "Shigebot 1.1.2"
 
 // A TextCommand is a simple text command in a irc channel.
 type TextCommand struct {
@@ -121,6 +122,7 @@ func Init(twitchUser, twitchOauth, gistOAuth string, channelList []string,
 	// connect to twitch irc
 	ircobj := irc.IRC(twitchUser, twitchUser)
 	ircobj.Password = twitchOauth
+	ircobj.PingFreq = 45 * time.Second
 	err = ircobj.Connect("irc.twitch.tv:6667")
 	if err != nil {
 		b = nil
