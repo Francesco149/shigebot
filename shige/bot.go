@@ -125,7 +125,7 @@ func Init(twitchUser, twitchOauth, gistOAuth string, channelList []string,
 	ircobj := irc.IRC(twitchUser, twitchUser)
 	ircobj.Password = twitchOauth
 	ircobj.PingFreq = time.Duration(9000000000000000000)
-	ircobj.KeepAlive = time.Duration(9000000000000000000)  
+	ircobj.KeepAlive = time.Duration(9000000000000000000)
 	// apparently pings are not required for twitch
 	err = ircobj.Connect("irc.twitch.tv:6667")
 	if err != nil {
