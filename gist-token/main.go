@@ -16,13 +16,18 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"github.com/MaximeD/gost/conf/oauth"
+	"os"
 )
 
 func main() {
 	fmt.Println("This is your OAuth gist token, please copy it to your",
 		"config.json:", OAuth.GetToken())
 	fmt.Println("If you accidentally lose it, you can always see your tokens",
-		"from here: https://github.com/settings/applications")
+		"from here: https://github.com/settings/applications and edit and",
+		"regenerate the gost token")
+	fmt.Print("Press 'Enter' to exit...")
+	bufio.NewReader(os.Stdin).ReadBytes('\n')
 }
