@@ -232,7 +232,7 @@ func (c Channel) EditCommand(name, text string) error {
 	return nil
 }
 
-// SetCommandMod sets whehter a command is for mods only or not.
+// SetCommandMod sets whether a command is for mods only or not.
 func (c Channel) SetCommandMod(name string, modOnly bool) error {
 	commands := <-c.chCommands
 	defer func() { c.chCommands <- commands }()
@@ -271,9 +271,8 @@ func (c Channel) onCommand(commandName, nick string) bool {
 	elapsed := time.Now().Sub(command.LastUsage)
 	cooldown := time.Millisecond * time.Duration(cd)
 	if elapsed < cooldown {
-		c.Println("Rejected command", commandName,
-			"because it is still on cooldown,", elapsed,
-			"since last usage, cooldown is", cooldown)
+		c.Println("Rejected command", commandName, "because it is still on "+
+			"cooldown,", elapsed, "since last usage, cooldown is", cooldown)
 		return true
 	}
 
