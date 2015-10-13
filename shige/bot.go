@@ -23,7 +23,7 @@ import (
 	"time"
 )
 
-const BotName = "Shigebot 1.1.4"
+const BotName = "Shigebot 1.1.5"
 
 // A TextCommand is a simple text command in a irc channel.
 type TextCommand struct {
@@ -143,13 +143,6 @@ func Init(twitchUser, twitchOauth, gistOAuth string, channelList []string,
 		for _, channel := range channelList {
 			b.Join(channel)
 		}
-	})
-
-	ircobj.AddCallback("PING", func(event *irc.Event) {
-		fmt.Println("PING", event.Arguments[0])
-		pongraw := fmt.Sprintf("PONG %s", event.Arguments[0])
-		fmt.Println(pongraw)
-		ircobj.SendRawf(pongraw)
 	})
 
 	ircobj.AddCallback("PRIVMSG", func(event *irc.Event) {
