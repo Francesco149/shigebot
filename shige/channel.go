@@ -268,7 +268,7 @@ func (c Channel) onCommand(commandName, nick string) bool {
 	command := commands[commandName]
 
 	cd := atomic.LoadInt32(&c.commandCooldown)
-	elapsed := time.Now().Sub(command.LastUsage)
+	elapsed := time.Since(command.LastUsage)
 	cooldown := time.Millisecond * time.Duration(cd)
 	if elapsed < cooldown {
 		c.Println("Rejected command", commandName, "because it is still on "+
