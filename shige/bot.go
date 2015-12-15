@@ -22,7 +22,7 @@ import (
 	"strings"
 )
 
-const BotName = "Shigebot 1.2.0"
+const BotName = "Shigebot 1.2.1"
 
 // A Bot is an instance of Shigebot connected to multiple channels on twitch
 // on a single twitch account.

@@ -183,7 +183,7 @@ func (c *Channel) Command(name string) *TextCommand {
 
 // AddCommand adds a simple text command.
 func (c *Channel) AddCommand(name, text string) error {
-	if !c.CommandExists(name) {
+	if c.CommandExists(name) {
 		return fmt.Errorf("Command %s already exists.", name)
 	}
 
