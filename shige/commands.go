@@ -46,28 +46,37 @@ func parseCommandName(str string) string {
 }
 
 // AddCommand adds a command and binds it to handler.
-func (b Bot) AddCommand(name string, handler func(*CommandData)) {
-	commands := <-b.chCommands
-	commands[name] = handler
-	b.chCommands <- commands
+func (b *Bot) AddCommand(name string, handler func(*CommandData)) {
+	b.w.Await(func() { b.commands[name] = handler })
 }
 
 // RemoveCommand removes a command.
-func (b Bot) RemoveCommand(name string) {
-	commands := <-b.chCommands
-	delete(commands, name)
-	b.chCommands <- commands
+func (b *Bot) RemoveCommand(name string) {
+	b.w.Await(func() { delete(b.commands, name) })
 }
 
 // CommandExists returns whether the command exists.
-func (b Bot) CommandExists(name string) bool {
-	commands := <-b.chCommands
-	defer func() { b.chCommands <- commands }()
-	return commands[name] != nil
+func (b *Bot) CommandExists(name string) bool {
+	resp := make(chan bool, 1)
+	b.w.Do(func() {
+		resp <- b.commands[name] != nil
+		close(resp)
+	})
+	return <-resp
+}
+
+// Command returns a command's handler.
+func (b *Bot) Command(name string) func(*CommandData) {
+	resp := make(chan func(*CommandData), 1)
+	b.w.Do(func() {
+		resp <- b.commands[name]
+		close(resp)
+	})
+	return <-resp
 }
 
 func (b *Bot) initCommands() {
-	commands := map[string]func(*CommandData){
+	b.commands = map[string]func(*CommandData){
 		"cmdadd": func(c *CommandData) {
 			ch := c.Channel
 			if !ch.IsMod(c.Nick) {
@@ -201,9 +210,6 @@ func (b *Bot) initCommands() {
 			atomic.StoreInt32(&ch.commandCooldown, int32(i))
 		},
 	}
-
-	b.chCommands = make(chan map[string]func(*CommandData), 1)
-	b.chCommands <- commands
 
 	b.BuiltinCommandsInfo = "" +
 		`* +!cmdadd: adds a command (Usage: !cmdadd commandname text)

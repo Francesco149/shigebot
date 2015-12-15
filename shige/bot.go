@@ -20,20 +20,9 @@ import (
 	"fmt"
 	"github.com/thoj/go-ircevent"
 	"strings"
-	"time"
 )
 
-const BotName = "Shigebot 1.1.6"
-
-// A TextCommand is a simple text command in a irc channel.
-type TextCommand struct {
-	// Text is the reply that the command will trigger.
-	Text string
-	// ModOnly is true when the command is reserved for mods.
-	ModOnly bool
-	// LastUsage is the time the command was last used
-	LastUsage time.Time
-}
+const BotName = "Shigebot 1.2.0"
 
 // A Bot is an instance of Shigebot connected to multiple channels on twitch
 // on a single twitch account.
@@ -50,45 +39,46 @@ type Bot struct {
 	BuiltinCommandsInfo string
 
 	irc           *irc.Connection
+	w             *Worker
 	db            dbManager
 	isMod         bool
 	caseSensitive bool
 	gistOAuth     string
-
-	// the following fieldsare thread safe by using channels as mutexes
-	chChannels  chan map[string]*Channel
-	chCommands  chan map[string]func(*CommandData)
-	rateLimiter chan *rateLimiter
-	ignore      chan map[string]bool
+	channels      map[string]*Channel
+	commands      map[string]func(*CommandData)
+	rateLimiter   *rateLimiter
+	ignore        map[string]bool
 }
 
 // Irc returns a pointer to the irc connection object used by the bot.
 func (b Bot) Irc() *irc.Connection { return b.irc }
 
-// Channel returns a pointer to channel.
+// Channel returns a pointer to a channel.
 func (b Bot) Channel(channel string) *Channel {
-	channels := <-b.chChannels
-	defer func() { b.chChannels <- channels }()
-	return channels[channel]
+	resp := make(chan *Channel, 1)
+	b.w.Do(func() {
+		resp <- b.channels[channel]
+		close(resp)
+	})
+	return <-resp
 }
 
 // Join makes the bot join channel and load any commands that might have been
 // previously saved for that channel.
 func (b *Bot) Join(channel string) {
-	channels := <-b.chChannels
-	defer func() { b.chChannels <- channels }()
 	fmt.Println("> Joining", channel)
-	b.irc.Join(channel)
-	channels[channel] = newChannel(b, channel)
+	ch := newChannel(b, channel)
+	b.w.Await(func() {
+		b.irc.Join(channel)
+		b.channels[channel] = ch
+	})
 }
 
 // Part makes the bot leave channel.
 func (b Bot) Part(channel string) {
-	channels := <-b.chChannels
-	defer func() { b.chChannels <- channels }()
 	fmt.Println("> Leaving", channel)
 	b.irc.Part(channel)
-	delete(channels, channel)
+	b.w.Await(func() { delete(b.channels, channel) })
 }
 
 // Init initializes a new instance of Bot and connects to twitch irc servers
@@ -110,6 +100,7 @@ func Init(twitchUser, twitchOauth, gistOAuth string, channelList []string,
 		isMod:         isMod,
 		caseSensitive: caseSensitive,
 		gistOAuth:     gistOAuth,
+		w:             NewWorker("shigebot", 500),
 	}
 
 	// initialize everything
@@ -124,24 +115,21 @@ func Init(twitchUser, twitchOauth, gistOAuth string, channelList []string,
 	// connect to twitch irc
 	ircobj := irc.IRC(twitchUser, twitchUser)
 	ircobj.Password = twitchOauth
-	//ircobj.PingFreq = time.Duration(9000000000000000000)
-	//ircobj.KeepAlive = time.Duration(9000000000000000000)
-	// apparently pings are not required for twitch
-	err = ircobj.Connect("irc.twitch.tv:6667")
-	if err != nil {
-		b = nil
-		return
-	}
 
 	b.irc = ircobj
 
+	err = ircobj.Connect("irc.twitch.tv:6667")
+	if err != nil {
+		return
+	}
+
+	b.w.Start()
 	// irc callbacks
 	ircobj.AddCallback("001", func(e *irc.Event) {
 		ircobj.SendRaw("CAP REQ :twitch.tv/membership") // userlist & modesets
 
 		// join all channels
-		b.chChannels = make(chan map[string]*Channel, 1)
-		b.chChannels <- make(map[string]*Channel)
+		b.w.Await(func() { b.channels = make(map[string]*Channel) })
 		for _, channel := range channelList {
 			b.Join(channel)
 		}
@@ -157,10 +145,7 @@ func Init(twitchUser, twitchOauth, gistOAuth string, channelList []string,
 		channelName := event.Arguments[0]
 		nick := event.Nick
 
-		channels := <-b.chChannels
-		c := channels[channelName]
-		b.chChannels <- channels
-
+		c := b.Channel(channelName)
 		c.Printf("%s: %s\n", nick, msg)
 
 		// ignore empty messages
@@ -187,9 +172,7 @@ func Init(twitchUser, twitchOauth, gistOAuth string, channelList []string,
 			return
 		}
 
-		commands := <-b.chCommands
-		builtinCommand := commands[cmd]
-		b.chCommands <- commands
+		builtinCommand := b.Command(cmd)
 
 		switch {
 		// global built-in commands
@@ -227,9 +210,7 @@ func Init(twitchUser, twitchOauth, gistOAuth string, channelList []string,
 			return
 		}
 
-		channels := <-b.chChannels
-		c := channels[ch]
-		b.chChannels <- channels
+		c := b.Channel(ch)
 
 		// add/remove operator
 		switch operation {
@@ -246,4 +227,9 @@ func Init(twitchUser, twitchOauth, gistOAuth string, channelList []string,
 }
 
 // Run starts the bot, allowing it to start handling commands.
-func (b Bot) Run() { b.irc.Loop() }
+func (b Bot) Run() {
+	b.irc.Loop()
+	fmt.Println("Waiting for worker to terminate")
+	b.w.Terminate()
+	return
+}

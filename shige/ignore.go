@@ -16,33 +16,35 @@
 package shige
 
 func (b *Bot) initIgnoreList(botnick string) {
-	b.ignore = make(chan map[string]bool, 1)
-	b.ignore <- make(map[string]bool)
-	b.Ignore(botnick)
+	b.ignore = make(map[string]bool)
+	b.ignore[botnick] = true
 }
 
 // Ignore ignores text commands for a list of nicks.
 // Note: the bot ignores itself by default.
 func (b Bot) Ignore(nicknames ...string) {
-	ignore := <-b.ignore
-	for _, nick := range nicknames {
-		ignore[nick] = true
-	}
-	b.ignore <- ignore
+	b.w.Await(func() {
+		for _, nick := range nicknames {
+			b.ignore[nick] = true
+		}
+	})
 }
 
 // Unignore restores text commands for a list of nicks.
 func (b Bot) Unignore(nicknames ...string) {
-	ignore := <-b.ignore
-	for _, nick := range nicknames {
-		delete(ignore, nick)
-	}
-	b.ignore <- ignore
+	b.w.Await(func() {
+		for _, nick := range nicknames {
+			delete(b.ignore, nick)
+		}
+	})
 }
 
 // Ignored returns whether text commands are ignored for the nickname.
 func (b Bot) Ignored(nick string) bool {
-	ignore := <-b.ignore
-	defer func() { b.ignore <- ignore }()
-	return ignore[nick]
+	resp := make(chan bool, 1)
+	b.w.Do(func() {
+		resp <- b.ignore[nick]
+		close(resp)
+	})
+	return <-resp
 }

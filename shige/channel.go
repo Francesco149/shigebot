@@ -16,19 +16,27 @@
 package shige
 
 import (
-	"errors"
 	"fmt"
 	"sort"
-	"sync/atomic"
 	"time"
 )
+
+// A TextCommand is a simple text command in a irc channel.
+type TextCommand struct {
+	// Text is the reply that the command will trigger.
+	Text string
+	// ModOnly is true when the command is reserved for mods.
+	ModOnly bool
+	// LastUsage is the time the command was last used
+	LastUsage time.Time
+}
 
 // A Channel is a single irc channel to which the bot is connected.
 type Channel struct {
 	commandCooldown int32
 	name            string
-	chMods          chan map[string]bool
-	chCommands      chan map[string]*TextCommand
+	mods            map[string]bool
+	commands        map[string]*TextCommand
 	parent          *Bot
 }
 
@@ -40,15 +48,10 @@ func newChannel(parent *Bot, name string) *Channel {
 	c := &Channel{
 		0,
 		name,
-		make(chan map[string]bool, 1),
-		make(chan map[string]*TextCommand, 1),
+		make(map[string]bool, 1),
+		parent.db.getCommands(name),
 		parent,
 	}
-	c.chMods <- make(map[string]bool)
-
-	// load commands for this channel
-	commands := parent.db.getCommands(name)
-	c.chCommands <- commands
 
 	addhelp := func() {
 		if c.CommandExists("help") {
@@ -77,46 +80,45 @@ func newChannel(parent *Bot, name string) *Channel {
 	return c
 }
 
-func (c Channel) filename() string {
+func (c *Channel) filename() string {
 	return fmt.Sprintf("%s.txt", c.name[1:])
 }
 
 // Printf calls fmt.Printf with the channel name as a prefix to the text.
-func (c Channel) Printf(format string, args ...interface{}) {
+func (c *Channel) Printf(format string, args ...interface{}) {
 	fmt.Printf(fmt.Sprintf("%s> %s", c.name, format), args...)
 }
 
 // Println calls fmt.Println with the channel name as a prefix to the text.
-func (c Channel) Println(args ...interface{}) {
+func (c *Channel) Println(args ...interface{}) {
 	fmt.Println(append([]interface{}{fmt.Sprintf("%s>", c.name)}, args...)...)
 }
 
 // Privmsgf formats and sends a rate-limited message.
-func (c Channel) Privmsgf(format string, args ...interface{}) {
+func (c *Channel) Privmsgf(format string, args ...interface{}) {
 	c.parent.Privmsgf(c.name, format, args...)
 }
 
 // AddMod allows nick to use mod commands.
 func (c *Channel) AddMod(nick string) {
 	c.Println("Adding mod", nick)
-	mods := <-c.chMods
-	mods[nick] = true
-	c.chMods <- mods
+	c.parent.w.Await(func() { c.mods[nick] = true })
 }
 
 // RemoveMod revokes the use of mod commands for nick.
 func (c *Channel) RemoveMod(nick string) {
 	c.Println("Removing mod", nick)
-	mods := <-c.chMods
-	delete(mods, nick)
-	c.chMods <- mods
+	c.parent.w.Await(func() { delete(c.mods, nick) })
 }
 
 // IsMod returns whether nick is allowed to use mod commands.
-func (c Channel) IsMod(nick string) bool {
-	mods := <-c.chMods
-	defer func() { c.chMods <- mods }()
-	return mods[nick]
+func (c *Channel) IsMod(nick string) bool {
+	resp := make(chan bool, 1)
+	c.parent.w.Do(func() {
+		resp <- c.mods[nick]
+		close(resp)
+	})
+	return <-resp
 }
 
 // FullCommandList retrieves a list of the commands and their description (or
@@ -124,21 +126,20 @@ func (c Channel) IsMod(nick string) bool {
 // Mod commands will be prefixed by the modPrefix string.
 // If noDescription is true, description or text will be omitted.
 // The list is alphabetically sorted.
-func (c Channel) FullCommandList(separator, modPrefix string,
+func (c *Channel) FullCommandList(separator, modPrefix string,
 	noDescription bool) (res string) {
-
-	commands := <-c.chCommands
-	defer func() { c.chCommands <- commands }()
 
 	// sort commands by name
 	sorted := make([]string, 0)
-	for name := range commands {
-		sorted = append(sorted, name)
-	}
+	c.parent.w.Await(func() {
+		for name := range c.commands {
+			sorted = append(sorted, name)
+		}
+	})
 	sort.Strings(sorted)
 
 	for _, name := range sorted {
-		command := commands[name]
+		command := c.Command(name)
 		line := ""
 		if noDescription {
 			line = fmt.Sprintf("!%s%s", name, separator)
@@ -161,23 +162,29 @@ func (c Channel) FullCommandList(separator, modPrefix string,
 // CommandList returns a comma-separated list of the commands, prefixing
 // moderator commands with a +.
 // The list is alphabetically sorted.
-func (c Channel) CommandList() string {
+func (c *Channel) CommandList() string {
 	return c.FullCommandList(", ", "+", true)
 }
 
-// Command returns a pointer to a command.
-func (c Channel) Command(name string) *TextCommand {
-	commands := <-c.chCommands
-	defer func() { c.chCommands <- commands }()
-	return commands[name]
+// Command returns a copy of the desired command.
+func (c *Channel) Command(name string) *TextCommand {
+	resp := make(chan *TextCommand, 1)
+	c.parent.w.Do(func() {
+		if c.commands[name] == nil {
+			resp <- nil
+		} else {
+			cp := *c.commands[name]
+			resp <- &cp
+		}
+		close(resp)
+	})
+	return <-resp
 }
 
 // AddCommand adds a simple text command.
-func (c Channel) AddCommand(name, text string) error {
-	commands := <-c.chCommands
-	defer func() { c.chCommands <- commands }()
-	if commands[name] != nil {
-		return errors.New(fmt.Sprintf("Command %s already exists.", name))
+func (c *Channel) AddCommand(name, text string) error {
+	if !c.CommandExists(name) {
+		return fmt.Errorf("Command %s already exists.", name)
 	}
 
 	err := attemptQuery(func() error {
@@ -187,17 +194,17 @@ func (c Channel) AddCommand(name, text string) error {
 		return err
 	}
 
-	commands[name] = &TextCommand{Text: text, ModOnly: false}
+	c.parent.w.Await(func() {
+		c.commands[name] = &TextCommand{Text: text, ModOnly: false}
+	})
 	c.Println("Added command", name, "->", text)
 	return nil
 }
 
 // RemoveCommand removes a simple text command.
-func (c Channel) RemoveCommand(name string) error {
-	commands := <-c.chCommands
-	defer func() { c.chCommands <- commands }()
-	if commands[name] == nil {
-		return errors.New(fmt.Sprintf("Command %s doesn't exist.", name))
+func (c *Channel) RemoveCommand(name string) error {
+	if !c.CommandExists(name) {
+		return fmt.Errorf("Command %s doesn't exist.", name)
 	}
 
 	err := attemptQuery(func() error {
@@ -207,67 +214,63 @@ func (c Channel) RemoveCommand(name string) error {
 		return err
 	}
 
-	delete(commands, name)
+	c.parent.w.Await(func() { delete(c.commands, name) })
 	c.Println("Removed command", name)
 	return nil
 }
 
 // EditCommand replaces the text of an existing simple text command.
-func (c Channel) EditCommand(name, text string) error {
-	commands := <-c.chCommands
-	defer func() { c.chCommands <- commands }()
-	if commands[name] == nil {
-		return errors.New(fmt.Sprintf("Command %s doesn't exist.", name))
+func (c *Channel) EditCommand(name, text string) error {
+	if !c.CommandExists(name) {
+		return fmt.Errorf("Command %s doesn't exist.", name)
 	}
 
 	err := attemptQuery(func() error {
-		return c.parent.db.setCommand(c.name, name, text, false)
+		co := c.Command(name)
+		return c.parent.db.setCommand(c.name, name, text, co.ModOnly)
 	})
 	if err != nil {
 		return err
 	}
 
-	commands[name].Text = text
+	c.parent.w.Await(func() { c.commands[name].Text = text })
 	c.Println("Edited command", name, "->", text)
 	return nil
 }
 
 // SetCommandMod sets whether a command is for mods only or not.
-func (c Channel) SetCommandMod(name string, modOnly bool) error {
-	commands := <-c.chCommands
-	defer func() { c.chCommands <- commands }()
-	if commands[name] == nil {
-		return errors.New(fmt.Sprintf("Command %s doesn't exist.", name))
+func (c *Channel) SetCommandMod(name string, modOnly bool) error {
+	if !c.CommandExists(name) {
+		return fmt.Errorf("Command %s doesn't exist.", name)
 	}
 
 	err := attemptQuery(func() error {
+		co := c.Command(name)
 		return c.parent.db.setCommand(
-			c.name, name, commands[name].Text, modOnly)
+			c.name, name, co.Text, modOnly)
 	})
 	if err != nil {
 		return err
 	}
 
-	commands[name].ModOnly = modOnly
+	c.parent.w.Await(func() { c.commands[name].ModOnly = modOnly })
 	return nil
 }
 
 // CommandExists returns whether a command exists.
-func (c Channel) CommandExists(name string) bool {
+func (c *Channel) CommandExists(name string) bool {
 	return c.Command(name) != nil
 }
 
-func (c Channel) onCommand(commandName, nick string) bool {
+func (c *Channel) onCommand(commandName, nick string) bool {
 	if !c.CommandExists(commandName) {
 		// should only return false when the command doesn't exist
 		return false
 	}
 
-	commands := <-c.chCommands
-	defer func() { c.chCommands <- commands }()
-	command := commands[commandName]
+	command := c.Command(commandName)
 
-	cd := atomic.LoadInt32(&c.commandCooldown)
+	cd := c.commandCooldown
 	elapsed := time.Since(command.LastUsage)
 	cooldown := time.Millisecond * time.Duration(cd)
 	if elapsed < cooldown {
@@ -282,7 +285,7 @@ func (c Channel) onCommand(commandName, nick string) bool {
 		return true
 	}
 
-	command.LastUsage = time.Now()
+	c.parent.w.Await(func() { c.commands[commandName].LastUsage = time.Now() })
 	c.Println("Processing text command", commandName)
 	c.Privmsgf("%s", command.Text)
 	return true
