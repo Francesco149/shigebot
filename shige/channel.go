@@ -33,11 +33,12 @@ type TextCommand struct {
 
 // A Channel is a single irc channel to which the bot is connected.
 type Channel struct {
-	commandCooldown int32
-	name            string
-	mods            map[string]bool
-	commands        map[string]*TextCommand
-	parent          *Bot
+	commandCooldown  int32
+	name             string
+	mods             map[string]bool
+	commands         map[string]*TextCommand
+	parent           *Bot
+	builtinLastUsage map[string]time.Time
 }
 
 // I don't really need a map for mods but looking up names is less code.
@@ -48,9 +49,10 @@ func newChannel(parent *Bot, name string) *Channel {
 	c := &Channel{
 		0,
 		name,
-		make(map[string]bool, 1),
+		make(map[string]bool),
 		parent.db.getCommands(name),
 		parent,
+		make(map[string]time.Time),
 	}
 
 	addhelp := func() {

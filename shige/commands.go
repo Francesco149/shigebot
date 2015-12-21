@@ -16,10 +16,12 @@
 package shige
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
-	"sync/atomic"
+	"time"
 )
 
 // I'm aware all of these could be methods for Channel but I prefer keeping the
@@ -75,7 +77,22 @@ func (b *Bot) Command(name string) func(*CommandData) {
 	return <-resp
 }
 
+func (b *Bot) isCooldown(ch *Channel, command string) bool {
+	resp := make(chan bool, 1)
+	b.w.Do(func() {
+		res := time.Since(ch.builtinLastUsage[command]) <
+			time.Duration(ch.commandCooldown)*time.Millisecond
+		if !res {
+			ch.builtinLastUsage[command] = time.Now()
+		}
+		resp <- res
+		close(resp)
+	})
+	return <-resp
+}
+
 func (b *Bot) initCommands() {
+	// TODO: join builtin commands with the channel commands somehow
 	b.commands = map[string]func(*CommandData){
 		"cmdadd": func(c *CommandData) {
 			ch := c.Channel
@@ -91,6 +108,11 @@ func (b *Bot) initCommands() {
 			// arguments combine to the command text
 			commandName := parseCommandName(c.Args[0])
 			commandText := strings.Join(c.Args[1:], " ")
+
+			if !b.caseSensitive {
+				commandName = strings.ToLower(commandName)
+			}
+
 			err := ch.AddCommand(commandName, commandText)
 			if err != nil {
 				ch.Privmsgf("%v", err)
@@ -112,6 +134,9 @@ func (b *Bot) initCommands() {
 			}
 
 			commandName := parseCommandName(c.Args[0])
+			if !b.caseSensitive {
+				commandName = strings.ToLower(commandName)
+			}
 			if b.CommandExists(commandName) {
 				ch.Privmsgf("Command %s cannot be removed.", commandName)
 				return
@@ -138,6 +163,9 @@ func (b *Bot) initCommands() {
 			}
 
 			commandName := parseCommandName(c.Args[0])
+			if !b.caseSensitive {
+				commandName = strings.ToLower(commandName)
+			}
 			if b.CommandExists(commandName) {
 				ch.Privmsgf("Command %s cannot be edited.", commandName)
 				return
@@ -165,6 +193,9 @@ func (b *Bot) initCommands() {
 			}
 
 			commandName := parseCommandName(c.Args[0])
+			if !b.caseSensitive {
+				commandName = strings.ToLower(commandName)
+			}
 			if b.CommandExists(commandName) {
 				ch.Privmsgf("Command %s cannot be edited.", commandName)
 				return
@@ -187,7 +218,13 @@ func (b *Bot) initCommands() {
 				return
 			}
 
-			cd := atomic.LoadInt32(&ch.commandCooldown)
+			resp := make(chan int32, 1)
+			b.w.Do(func() {
+				resp <- ch.commandCooldown
+				close(resp)
+			})
+			cd := <-resp
+
 			usage := fmt.Sprintf(
 				"Usage: !cooldown milliseconds. Current cooldown is %vms.", cd)
 
@@ -206,8 +243,63 @@ func (b *Bot) initCommands() {
 				i = 0
 			}
 
-			ch.Privmsgf("Setting command cooldown to %v milliseconds", i)
-			atomic.StoreInt32(&ch.commandCooldown, int32(i))
+			b.w.Await(func() { ch.commandCooldown = int32(i) })
+			ch.Privmsgf("Command cooldown set to %v milliseconds", i)
+		},
+
+		"uptime": func(c *CommandData) {
+			ch := c.Channel
+
+			if b.isCooldown(ch, "uptime") {
+				fmt.Println("uptime is on cooldown")
+				return
+			}
+
+			req, err := http.NewRequest("GET",
+				"https://api.twitch.tv/kraken/streams/"+ch.name[1:],
+				nil)
+			if err != nil {
+				ch.Privmsgf("API error: %v", err)
+				return
+			}
+
+			fmt.Println(req.URL)
+
+			req.Header.Add("Accept", "application/vnd.twitchtv.v3+json")
+
+			client := &http.Client{}
+			resp, err := client.Do(req)
+			if err != nil {
+				ch.Privmsgf("API error: %v", err)
+				return
+			}
+
+			defer resp.Body.Close()
+
+			var res map[string]interface{}
+
+			err = json.NewDecoder(resp.Body).Decode(&res)
+			if err != nil {
+				ch.Privmsgf("API error: %v", err)
+				return
+			}
+
+			// lol too lazy to do proper json decoding with structs
+			stream, ok := res["stream"].(map[string]interface{})
+			createdAt, ok := stream["created_at"].(string)
+			if len(createdAt) == 0 || !ok {
+				ch.Privmsgf("Offline")
+				return
+			}
+
+			parsedTime, err := time.Parse(
+				"2006-01-02T15:04:05Z", createdAt)
+			if err != nil {
+				ch.Privmsgf("API error: %v", err)
+				return
+			}
+
+			ch.Privmsgf("%v", time.Now().UTC().Sub(parsedTime))
 		},
 	}
 
@@ -216,7 +308,8 @@ func (b *Bot) initCommands() {
 * +!cmdremove: removes a command (Usage: !cmdremove commandname)
 * +!cmdedit: changes the text for a command (Usage: !cmdedit commandname text)
 * +!modonly: limits a command to mods only (Usage: !modonly commandname yes/no)
-* +!cooldown: milliseconds before a command can be reused (Usage: !cooldown ms)`
+* +!cooldown: milliseconds before a command can be reused (Usage: !cooldown ms)
+* !uptime: shows the channel's uptime if online`
 
 	fmt.Println("> Built-in commands initialized")
 }
